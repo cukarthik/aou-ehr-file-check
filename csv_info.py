@@ -8,7 +8,6 @@ from operator import itemgetter
 import math
 import six
 from csvkit import table
-import re
 from StringIO import StringIO
 
 NoneType = type(None)
@@ -17,15 +16,11 @@ MAX_UNIQUE = 5
 MAX_FREQ = 5
 OPERATIONS = ('min', 'max', 'sum', 'mean', 'median', 'stdev', 'nulls', 'unique', 'freq', 'len')
 RESULT_SUCCESS = 'success'
-SPRINT_RE = re.compile('.*?(\w+)_(\w+)_DataSprint_(\d+).*')
-PERSON_COLUMNS = []
 
 
 class CsvInfo:
-    def __init__(self, input_file, sprint_num, hpo_id, table_name):
+    def __init__(self, input_file, table_name):
 
-        self.sprint_num = sprint_num
-        self.hpo_id = hpo_id
         self.table_name = table_name
         self.columns = []
 

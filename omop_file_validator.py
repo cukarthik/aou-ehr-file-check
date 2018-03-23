@@ -4,16 +4,12 @@ import os
 import re
 import csv
 from csvkit import table
-from csvkit import DictReader
 from csv_info import CsvInfo
 
 RESULT_SUCCESS = 'success'
-SPRINT_RE = re.compile('(\w+)_(person|visit_occurrence|condition_occurrence|procedure_occurrence|drug_exposure|measurement)_datasprint_(\d+)\.csv')
-FILENAME_FORMAT = '<hpo_id>_<table>_DataSprint_<sprint_number>.csv'
+FILENAME_RE = re.compile('(person|visit_occurrence|condition_occurrence|procedure_occurrence|drug_exposure|measurement)\.csv')
+FILENAME_FORMAT = '<table>.csv'
 MSG_CANNOT_PARSE_FILENAME = 'Cannot parse filename'
-MSG_INVALID_SPRINT_NUM = 'Invalid sprint num'
-MSG_INVALID_TABLE_NAME = 'Invalid table name'
-MSG_INVALID_HPO_ID = 'Invalid HPO ID'
 MSG_INVALID_TYPE = 'Type mismatch'
 
 HEADER_KEYS = ['filename', 'hpo_id', 'sprint_num', 'table_name']
@@ -23,18 +19,6 @@ ERROR_KEYS = ['message', 'column_name', 'actual', 'expected']
 def get_cdm_table_columns():
     with open(settings.cdm_metadata_path) as f:
         return table.Table.from_csv(f)
-
-
-def get_hpo_info():
-    with open(settings.hpo_csv_path) as f:
-        return list(DictReader(f, delimiter=',', quotechar='"', quoting=csv.QUOTE_ALL))
-
-
-def parse_filename(filename):
-    m = SPRINT_RE.match(filename.lower())
-    if m and len(m.groups()) == 3:
-        return dict(sprint_num=int(m.group(3)), hpo_id=m.group(1), table_name=m.group(2))
-    return None
 
 
 def type_eq(cdm_column_type, submission_column_type):
@@ -66,40 +50,20 @@ def evaluate_submission(file_path):
     result = {'passed': False, 'errors': []}
 
     file_path_parts = file_path.split(os.sep)
-    filename = file_path_parts[-1]
-    result['filename'] = filename
-    parts = parse_filename(filename)
+    table_name = file_path_parts[-1]
+    result['filename'] = table_name
 
-    if parts is None:
-        result['errors'].append(dict(message=MSG_CANNOT_PARSE_FILENAME, actual=filename, expected=FILENAME_FORMAT))
-        return result
-
-    in_sprint_num, in_hpo_id, in_table_name = parts['sprint_num'], parts['hpo_id'], parts['table_name']
-
-    result['sprint_num'] = parts['sprint_num']
-    result['hpo_id'] = parts['hpo_id']
-    result['table_name'] = parts['table_name']
-
-    hpos = get_hpo_info()
-    hpo_ids = set(map(lambda h: h['hpo_id'].lower(), hpos))
-
-    if in_hpo_id not in hpo_ids:
-        result['errors'].append(dict(message=MSG_INVALID_HPO_ID, actual=in_hpo_id, expected=';'.join(hpo_ids)))
-        return result
+    result['table_name'] = table_name
 
     cdm_table_columns = get_cdm_table_columns()
     all_meta_items = cdm_table_columns.to_rows()
 
-    if in_sprint_num != settings.sprint_num:
-        result['errors'].append(dict(message=MSG_INVALID_SPRINT_NUM, actual=in_sprint_num, expected=settings.sprint_num))
-        return result
-
     # CSV parser is flexible/lenient, but we can only support proper comma-delimited files
     with open(file_path) as input_file:
-        sprint_info = CsvInfo(input_file, in_sprint_num, in_hpo_id, in_table_name)
+        sprint_info = CsvInfo(input_file, table_name)
 
         # get table metadata
-        meta_items = filter(lambda r: r[0] == in_table_name, all_meta_items)
+        meta_items = filter(lambda r: r[0] == table_name, all_meta_items)
 
         # Check each column exists with correct type and required
         for meta_item in meta_items:
