@@ -5,7 +5,7 @@ import os
 import codecs
 import pandas as pd
 import numpy as np
-# import csv
+import csv
 # from csv_info import CsvInfo
 import json
 
@@ -15,14 +15,18 @@ RESULT_SUCCESS = 'success'
 MSG_CANNOT_PARSE_FILENAME = 'Cannot parse filename'
 MSG_INVALID_TYPE = 'Type mismatch'
 
-HEADER_KEYS = ['filename', 'hpo_id', 'sprint_num', 'table_name']
+HEADER_KEYS = ['filename', 'table_name']
 ERROR_KEYS = ['message', 'column_name', 'actual', 'expected']
 
 
 def get_cdm_table_columns(table_name):
     # allow files to be found regardless of CaSe
     file=os.path.join(settings.cdm_metadata_path, table_name.lower()+'.json')
-    return json.load(open(file))
+    if os.path.isfile(file):
+        return json.load(open(file))
+    else:
+        return None
+
 
 
 def type_eq(cdm_column_type, submission_column_type):
@@ -36,8 +40,8 @@ def type_eq(cdm_column_type, submission_column_type):
         return submission_column_type == 'character varying'
     if cdm_column_type == 'integer':
         return submission_column_type == 'int'
-    if cdm_column_type in ('character varying', 'text'):
-        return submission_column_type in ('str', 'unicode')
+    if cdm_column_type in ('character varying', 'text', 'string'):
+        return submission_column_type in ('str', 'unicode', 'object')
     if cdm_column_type == 'date':
         return submission_column_type in ('str', 'unicode', 'date')
     if cdm_column_type == 'numeric':
@@ -67,69 +71,12 @@ def remove_bom(filename):
         f.read(bom_len)
         return f
 
-def evaluate_submission(file_path):
-    """
-    Evaluates submission structure and content
-    :param file_path: path to csv file
-    :return:
-    """
-    result = {'passed': False, 'errors': []}
-
-    filename, file_extension = os.path.splitext(file_path)
-    file_path_parts = filename.split(os.sep)
-    table_name = file_path_parts[-1]
-    result['filename'] = table_name
-
-    result['table_name'] = table_name
-
-    cdm_table_columns = get_cdm_table_columns(table_name)
-    all_meta_items = cdm_table_columns.to_rows()
-
-    # CSV parser is flexible/lenient, but we can only support proper comma-delimited files
-    with open(file_path) as input_file:
-        data_file = CsvInfo(input_file, table_name)
-
-        # get table metadata
-        meta_items = filter(lambda r: r[0] == table_name, all_meta_items)
-
-        # Check each column exists with correct type and required
-        for meta_item in meta_items:
-            meta_column_name = meta_item[1]
-            meta_column_required = not meta_item[2]
-            meta_column_type = meta_item[3]
-            submission_has_column = False
-
-            for submission_column in data_file.columns:
-                submission_column_name = submission_column['name'].lower()
-                if submission_column_name == meta_column_name:
-                    submission_has_column = True
-                    submission_column_type = submission_column['type'].lower()
-
-                    # If all empty don't do type check
-                    if submission_column_type != 'nonetype':
-                        if not type_eq(meta_column_type, submission_column_type):
-                            e = dict(message=MSG_INVALID_TYPE,
-                                     column_name=submission_column_name,
-                                     actual=submission_column_type,
-                                     expected=meta_column_type)
-                            result['errors'].append(e)
-
-                    # Invalid if any nulls present in a required field
-                    if meta_column_required and submission_column['stats']['nulls']:
-                        result['errors'].append(dict(message='NULL values are not allowed for column',
-                                                     column_name=submission_column_name))
-
-            if not submission_has_column and meta_column_required:
-                result['errors'].append(dict(message='Missing required column', column_name=meta_column_name))
-    return result
-
-
 def process_file(file_path):
     """
     Find sprint files for the specified HPO and load CDM tables in the schema
     :return:
     """
-    table_map = dict()
+    # table_map = dict()
 
     filename, file_extension = os.path.splitext(file_path)
     file_path_parts = filename.split(os.sep)
@@ -145,99 +92,111 @@ def process_file(file_path):
 
     phase = 'Received CSV file "%s"' % table_name
 
-    try:
-        # get column names for this table
-        column_names = [col['name'] for col in cdm_table_columns]
-        csv_columns = list(pd.read_csv(remove_bom(file_path), nrows=1).columns.values)
-        datetime_columns = [col_name.lower() for col_name in csv_columns if 'date' in col_name.lower()]
+    result = {'passed': False, 'errors': []}
+    result['filename'] = table_name+file_extension
 
-        phase = 'Parsing CSV file'
-        # read file to be processed
-        df = pd.read_csv(remove_bom(file_path), na_values=['', ' ', '.'], parse_dates=datetime_columns,
-                         infer_datetime_format=True)
-        print(phase)
+    if cdm_table_columns is None:
+        result['errors'].append(dict(message='File is not a OMOP CDM table: %s' % table_name))
+    else:
 
-        # lowercase field names
-        df = df.rename(columns=str.lower)
+        try:
+            # get column names for this table
+            column_names = [col['name'] for col in cdm_table_columns]
+            csv_columns = list(pd.read_csv(remove_bom(file_path), nrows=1).columns.values)
+            datetime_columns = [col_name.lower() for col_name in csv_columns if 'date' in col_name.lower()]
 
-        # add missing columns (with NaN values)
-        df = df.reindex(columns=column_names)
+            phase = 'Parsing CSV file %s' % file_path
+            # read file to be processed
+            df = pd.read_csv(remove_bom(file_path), na_values=['', ' ', '.'], parse_dates=datetime_columns,
+                             infer_datetime_format=True)
+            print(phase)
 
-        # fill in blank concept_id columns with 0
-        concept_columns = [col_name for col_name in column_names if col_name.endswith('concept_id') and 'source' not in col_name]
-        df[concept_columns] = df[concept_columns].fillna(value=0)
+            # lowercase field names
+            df = df.rename(columns=str.lower)
 
+            # add missing columns (with NaN values)
+            # df = df.reindex(columns=column_names)
 
-        result = {'passed': False, 'errors': []}
-    # CSV parser is flexible/lenient, but we can only support proper comma-delimited files
-    # with open(file_path) as input_file:
-    #     data_file = CsvInfo(input_file, table_name)
-
-        # get table metadata
-        # meta_items = filter(lambda r: r[0] == table_name, all_meta_items)
-
-        # Check each column exists with correct type and required
-        for meta_item in cdm_table_columns:
-            meta_column_name = meta_item['name']
-            meta_column_required =  meta_item['mode']=='required'
-            meta_column_type = meta_item['type']
-            submission_has_column = False
-
-            for submission_column in df.columns:
-                if submission_column == meta_column_name:
-                    submission_has_column = True
-                    submission_column_type = df[submission_column].dtype
-
-                    # If all empty don't do type check
-                    if submission_column_type != None:
-                        if not type_eq(meta_column_type, submission_column_type):
-                            e = dict(message=MSG_INVALID_TYPE,
-                                     column_name=submission_column,
-                                     actual=submission_column_type,
-                                     expected=meta_column_type)
-                            result['errors'].append(e)
-
-                    # Invalid if any nulls present in a required field
-                    if meta_column_required and df[submission_column].isnull().sum()>0:#submission_column['stats']['nulls']:
-                        result['errors'].append(dict(message='NULL values are not allowed for column',
-                                                     column_name=submission_column))
-
-            if not submission_has_column and meta_column_required:
-                result['errors'].append(dict(message='Missing required column', column_name=meta_column_name))
+            # fill in blank concept_id columns with 0
+            # concept_columns = [col_name for col_name in column_names if col_name.endswith('concept_id') and 'source' not in col_name]
+            # df[concept_columns] = df[concept_columns].fillna(value=0)
 
 
-        return result
+        # CSV parser is flexible/lenient, but we can only support proper comma-delimited files
+        # with open(file_path) as input_file:
+        #     data_file = CsvInfo(input_file, table_name)
 
-    except Exception as e:
-        print(e)
+            # get table metadata
+            # meta_items = filter(lambda r: r[0] == table_name, all_meta_items)
+
+            # Check each column exists with correct type and required
+            for meta_item in cdm_table_columns:
+                meta_column_name = meta_item['name']
+                meta_column_required =  meta_item['mode']=='required'
+                meta_column_type = meta_item['type']
+                submission_has_column = False
+
+                for submission_column in df.columns:
+                    if submission_column == meta_column_name:
+                        submission_has_column = True
+                        submission_column_type = df[submission_column].dtype
+
+                        # If all empty don't do type check
+                        if submission_column_type != None:
+                            if not type_eq(meta_column_type, submission_column_type):
+                                e = dict(message=MSG_INVALID_TYPE,
+                                         column_name=submission_column,
+                                         actual=submission_column_type,
+                                         expected=meta_column_type)
+                                result['errors'].append(e)
+
+                        # Check if any nulls present in a required field
+                        if meta_column_required and df[submission_column].isnull().sum()>0:#submission_column['stats']['nulls']:
+                            result['errors'].append(dict(message='NULL values are not allowed for column',
+                                                         column_name=submission_column))
+                        continue
+
+                #Check if the column is required
+                if not submission_has_column and meta_column_required:
+                    result['errors'].append(dict(message='Missing required column', column_name=meta_column_name))
+
+        except Exception as e:
+            print(e)
+
+    return result
 
 def evaluate_submission(d):
     out_dir = os.path.join(d, 'errors')
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
 
-    for f in glob.glob(os.path.join(d, '*.csv')):
-        file_path_parts = f.split(os.sep)
-        filename = file_path_parts[-1]
-        output_filename = os.path.join(out_dir, filename)
+    output_filename = os.path.join(out_dir, 'results.csv')
+    with open(output_filename, 'w') as out:
+        #Create header information for results file
+        field_names = HEADER_KEYS + ERROR_KEYS
+        writer = csv.DictWriter(out, fieldnames=field_names, lineterminator='\n', quoting=csv.QUOTE_ALL)
+        writer.writeheader()
 
-        result = process_file(f)
-        rows = []
-        for error in result['errors']:
-            row = dict()
-            for header_key in HEADER_KEYS:
-                row[header_key] = result.get(header_key)
-            for error_key in ERROR_KEYS:
-                row[error_key] = error.get(error_key)
-            rows.append(row)
+        for f in glob.glob(os.path.join(d, '*.csv')):
+            file_path_parts = f.split(os.sep)
+            filename = file_path_parts[-1]
+            # output_filename = os.path.join(out_dir, filename+'_error')
 
-        with open(output_filename, 'w') as out:
-            field_names = HEADER_KEYS + ERROR_KEYS
-            writer = csv.DictWriter(out, fieldnames=field_names, lineterminator='\n', quoting=csv.QUOTE_ALL)
-            writer.writeheader()
-            writer.writerows(rows)
+            result = process_file(f)
+            rows = []
+            for error in result['errors']:
+                row = dict()
+                for header_key in HEADER_KEYS:
+                    row[header_key] = result.get(header_key)
+                for error_key in ERROR_KEYS:
+                    row[error_key] = error.get(error_key)
+                rows.append(row)
+
+            if len(rows) > 0:
+                writer.writerows(rows)
+            # out.writelines(rows)
 
 
 if __name__ == '__main__':
-    # process_dir(settings.csv_dir)
-    process_file('/Users/karthik/Dev/projects/Columbia/PMI/aou-ehr-file-check/examples/person.csv')
+    evaluate_submission(settings.csv_dir)
+    # process_file('/Users/karthik/Dev/projects/Columbia/PMI/aou-ehr-file-check/examples/person.csv')
