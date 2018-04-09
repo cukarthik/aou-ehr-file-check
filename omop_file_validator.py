@@ -92,6 +92,8 @@ def remove_bom(filename):
         f.read(bom_len)
         return f
 
+#finds the first occurrence of an error for that column.
+#currently, it does NOT find all errors in the column.
 def find_error_in_file(column_name, cdm_column_type, submission_column_type, df):
     for index, row in df.iterrows():
         try:
