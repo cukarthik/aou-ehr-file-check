@@ -48,6 +48,27 @@ def type_eq(cdm_column_type, submission_column_type):
         return submission_column_type == 'float'
     raise Exception('Unsupported CDM column type ' + cdm_column_type)
 
+
+def cast_type(cdm_column_type, value):
+    """
+    Compare column type in spec with column type in submission
+    :param cdm_column_type:
+    :param submission_column_type:
+    :return:
+    """
+    # if cdm_column_type == 'time':
+    #     return submission_column_type == 'character varying'
+    if cdm_column_type == 'integer':
+        return int(value)
+    if cdm_column_type in ('character varying', 'text', 'string'):
+        return str(value)
+    # if cdm_column_type == 'date':
+    #     return submission_column_type in ('str', 'unicode', 'date')
+    if cdm_column_type == 'numeric':
+        return float(value)
+    # raise Exception('Unsupported CDM column type ' + cdm_column_type)
+
+
 # code from: http://stackoverflow.com/questions/2456380/utf-8-html-and-css-files-with-bom-and-how-to-remove-the-bom-with-python
 def remove_bom(filename):
     if os.path.isfile(filename):
@@ -70,6 +91,15 @@ def remove_bom(filename):
         f.seek(0)
         f.read(bom_len)
         return f
+
+def find_error_in_file(column_name, cdm_column_type, submission_column_type, df):
+    for index, row in df.iterrows():
+        try:
+            cast_type(cdm_column_type, row[column_name])
+
+        except ValueError:
+            # print(row[column_name])
+            return index
 
 def process_file(file_path):
     """
@@ -144,9 +174,17 @@ def process_file(file_path):
                         # If all empty don't do type check
                         if submission_column_type != None:
                             if not type_eq(meta_column_type, submission_column_type):
-                                e = dict(message=MSG_INVALID_TYPE,
+                                # e = dict(message=MSG_INVALID_TYPE,
+                                #          column_name=submission_column,
+                                #          actual=submission_column_type,
+                                #          expected=meta_column_type)
+                                # result['errors'].append(e)
+
+                                #find the row that has the issue
+                                error_row_index = find_error_in_file(submission_column, meta_column_type, submission_column_type, df)
+                                e = dict(message=MSG_INVALID_TYPE+" line number "+str(error_row_index+1),
                                          column_name=submission_column,
-                                         actual=submission_column_type,
+                                         actual=df[submission_column][error_row_index],
                                          expected=meta_column_type)
                                 result['errors'].append(e)
 
