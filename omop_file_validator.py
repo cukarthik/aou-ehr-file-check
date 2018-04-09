@@ -4,14 +4,10 @@ import settings
 import os
 import codecs
 import pandas as pd
-import numpy as np
 import csv
-# from csv_info import CsvInfo
 import json
 
 RESULT_SUCCESS = 'success'
-# FILENAME_RE = re.compile('(person|visit_occurrence|condition_occurrence|procedure_occurrence|drug_exposure|measurement)\.csv')
-# FILENAME_FORMAT = '<table>.csv'
 MSG_CANNOT_PARSE_FILENAME = 'Cannot parse filename'
 MSG_INVALID_TYPE = 'Type mismatch'
 
@@ -53,20 +49,15 @@ def cast_type(cdm_column_type, value):
     """
     Compare column type in spec with column type in submission
     :param cdm_column_type:
-    :param submission_column_type:
+    :param value:
     :return:
     """
-    # if cdm_column_type == 'time':
-    #     return submission_column_type == 'character varying'
     if cdm_column_type == 'integer':
         return int(value)
     if cdm_column_type in ('character varying', 'text', 'string'):
         return str(value)
-    # if cdm_column_type == 'date':
-    #     return submission_column_type in ('str', 'unicode', 'date')
     if cdm_column_type == 'numeric':
         return float(value)
-    # raise Exception('Unsupported CDM column type ' + cdm_column_type)
 
 
 # code from: http://stackoverflow.com/questions/2456380/utf-8-html-and-css-files-with-bom-and-how-to-remove-the-bom-with-python
@@ -105,10 +96,10 @@ def find_error_in_file(column_name, cdm_column_type, submission_column_type, df)
 
 def process_file(file_path):
     """
-    Find sprint files for the specified HPO and load CDM tables in the schema
-    :return:
+    This function processes the submitted file
+    :return: A dictionary of errors found in the file. If there are no errors,
+    then only the error report headers will in the results.
     """
-    # table_map = dict()
 
     filename, file_extension = os.path.splitext(file_path)
     file_path_parts = filename.split(os.sep)
@@ -116,13 +107,10 @@ def process_file(file_path):
 
     #get the column definitions for a particular OMOP table
     cdm_table_columns = get_cdm_table_columns(table_name)
-    # all_meta_items = cdm_table_columns.to_rows()
 
-    #ToDo: may not need these lines b/c all tables are required and we will evaluate only files submitted for processing
-    # included_tables = pd.read_csv(settings.pmi_tables_csv_path).table_name.unique()
-    # tables = cdm_df[cdm_df['table_name'].isin(included_tables)].groupby(['table_name'])
 
     phase = 'Received CSV file "%s"' % table_name
+    print(phase)
 
     result = {'passed': False, 'errors': []}
     result['filename'] = table_name+file_extension
@@ -146,20 +134,6 @@ def process_file(file_path):
             # lowercase field names
             df = df.rename(columns=str.lower)
 
-            # add missing columns (with NaN values)
-            # df = df.reindex(columns=column_names)
-
-            # fill in blank concept_id columns with 0
-            # concept_columns = [col_name for col_name in column_names if col_name.endswith('concept_id') and 'source' not in col_name]
-            # df[concept_columns] = df[concept_columns].fillna(value=0)
-
-
-        # CSV parser is flexible/lenient, but we can only support proper comma-delimited files
-        # with open(file_path) as input_file:
-        #     data_file = CsvInfo(input_file, table_name)
-
-            # get table metadata
-            # meta_items = filter(lambda r: r[0] == table_name, all_meta_items)
 
             # Check each column exists with correct type and required
             for meta_item in cdm_table_columns:
@@ -176,11 +150,6 @@ def process_file(file_path):
                         # If all empty don't do type check
                         if submission_column_type != None:
                             if not type_eq(meta_column_type, submission_column_type):
-                                # e = dict(message=MSG_INVALID_TYPE,
-                                #          column_name=submission_column,
-                                #          actual=submission_column_type,
-                                #          expected=meta_column_type)
-                                # result['errors'].append(e)
 
                                 #find the row that has the issue
                                 error_row_index = find_error_in_file(submission_column, meta_column_type, submission_column_type, df)
@@ -220,7 +189,6 @@ def evaluate_submission(d):
         for f in glob.glob(os.path.join(d, '*.csv')):
             file_path_parts = f.split(os.sep)
             filename = file_path_parts[-1]
-            # output_filename = os.path.join(out_dir, filename+'_error')
 
             result = process_file(f)
             rows = []
