@@ -24,7 +24,6 @@ def get_cdm_table_columns(table_name):
         return None
 
 
-
 def type_eq(cdm_column_type, submission_column_type):
     """
     Compare column type in spec with column type in submission
@@ -83,13 +82,24 @@ def remove_bom(filename):
         f.read(bom_len)
         return f
 
+
 #finds the first occurrence of an error for that column.
 #currently, it does NOT find all errors in the column.
 def find_error_in_file(column_name, cdm_column_type, submission_column_type, df):
-    for index, row in df.iterrows():
-        try:
-            cast_type(cdm_column_type, row[column_name])
 
+    #for index, row in df.iterrows():
+    for i, (index, row) in enumerate(df.iterrows()):
+
+        try:
+            if i <= len(df) - 1:
+                print(index)
+                print(row[column_name])
+                if row[column_name]:
+                    cast_type(cdm_column_type, row[column_name])
+                else:
+                    return False
+            else:
+                return False
         except ValueError:
             # print(row[column_name])
             return index
@@ -117,6 +127,7 @@ def process_file(file_path):
 
     if cdm_table_columns is None:
         result['errors'].append(dict(message='File is not a OMOP CDM table: %s' % table_name))
+
     else:
 
         try:
@@ -133,7 +144,6 @@ def process_file(file_path):
 
             # lowercase field names
             df = df.rename(columns=str.lower)
-
 
             # Check each column exists with correct type and required
             for meta_item in cdm_table_columns:
@@ -153,11 +163,12 @@ def process_file(file_path):
 
                                 #find the row that has the issue
                                 error_row_index = find_error_in_file(submission_column, meta_column_type, submission_column_type, df)
-                                e = dict(message=MSG_INVALID_TYPE+" line number "+str(error_row_index+1),
+                                if error_row_index :
+                                    e = dict(message=MSG_INVALID_TYPE+" line number "+str(error_row_index+1),
                                          column_name=submission_column,
                                          actual=df[submission_column][error_row_index],
                                          expected=meta_column_type)
-                                result['errors'].append(e)
+                                    result['errors'].append(e)
 
                         # Check if any nulls present in a required field
                         if meta_column_required and df[submission_column].isnull().sum()>0:#submission_column['stats']['nulls']:
@@ -171,6 +182,8 @@ def process_file(file_path):
 
         except Exception as e:
             print(e)
+            print("column: " + submission_column)
+
 
     return result
 
