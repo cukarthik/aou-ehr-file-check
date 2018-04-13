@@ -12,6 +12,6 @@ Validate submissions for the All of Us data sprints
 
 ## Validation logic
  * File names must follow naming convention `{table}.csv`
-     * `table` an OMOP CDM table listed in [omop](omop)
+     * `table` an OMOP CDM table listed in [resources/omop](resources/omop)
  * Files must be in CSV format (comma-delimited) as specified by [rfc4180](https://tools.ietf.org/html/rfc4180)
- * Column names and types must follow the conventions in [resources/cdm.csv](resources/cdm.csv)
+ * Column names and types must follow the conventions in [resources/omop](resources/omop)
