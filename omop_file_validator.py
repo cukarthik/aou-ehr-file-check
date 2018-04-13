@@ -6,6 +6,7 @@ import codecs
 import pandas as pd
 import csv
 import json
+import datetime
 
 RESULT_SUCCESS = 'success'
 MSG_CANNOT_PARSE_FILENAME = 'Cannot parse filename'
@@ -35,10 +36,12 @@ def type_eq(cdm_column_type, submission_column_type):
         return submission_column_type == 'character varying'
     if cdm_column_type == 'integer':
         return submission_column_type == 'int'
-    if cdm_column_type in ('character varying', 'text', 'string'):
+    if cdm_column_type in ['character varying', 'text', 'string']:
         return submission_column_type in ('str', 'unicode', 'object')
     if cdm_column_type == 'date':
-        return submission_column_type in ('str', 'unicode', 'date')
+        return submission_column_type in ['str', 'unicode', 'datetime64[ns]']
+    if cdm_column_type == 'timestamp':
+            return submission_column_type in ['str', 'unicode', 'datetime64[ns]']
     if cdm_column_type == 'numeric':
         return submission_column_type == 'float'
     raise Exception('Unsupported CDM column type ' + cdm_column_type)
@@ -57,6 +60,10 @@ def cast_type(cdm_column_type, value):
         return str(value)
     if cdm_column_type == 'numeric':
         return float(value)
+    if cdm_column_type == 'date':
+        return datetime.date(value)
+    if cdm_column_type == 'timestamp':
+        return datetime.datetime(value)
 
 
 # code from: http://stackoverflow.com/questions/2456380/utf-8-html-and-css-files-with-bom-and-how-to-remove-the-bom-with-python
@@ -92,8 +99,8 @@ def find_error_in_file(column_name, cdm_column_type, submission_column_type, df)
 
         try:
             if i <= len(df) - 1:
-                print(index)
-                print(row[column_name])
+                #print(index)
+                #print(row[column_name])
                 if row[column_name]:
                     cast_type(cdm_column_type, row[column_name])
                 else:
