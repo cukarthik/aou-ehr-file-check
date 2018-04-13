@@ -215,9 +215,7 @@ def evaluate_submission(d):
 
             if len(rows) > 0:
                 writer.writerows(rows)
-            # out.writelines(rows)
 
 
 if __name__ == '__main__':
     evaluate_submission(settings.csv_dir)
-    # process_file('/Users/karthik/Dev/projects/Columbia/PMI/aou-ehr-file-check/examples/person.csv')
