@@ -2,6 +2,17 @@
 
 Validate submissions for the All of Us data sprints
 
+## Requirements
+
+ * Python 2.7.* or Python 3 (download from [here](https://www.python.org/downloads/) and install)
+ * pip (download [get-pip.py](https://bootstrap.pypa.io/get-pip.py) and run `python get-pip.py`)
+
+## Installation / Configuration
+
+ * Install requirements by running
+ 
+        pip install -r requirements.txt
+ 
 ## Running
  * Update `_settings.py` and rename it to `settings.py`
  * Create a folder and place all the EHR submission files to be validated into it
