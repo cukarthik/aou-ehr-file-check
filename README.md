@@ -17,6 +17,7 @@ Validate submissions for the All of Us data sprints
  * Update `_settings.py` and rename it to `settings.py`
  * Create a folder and place all the EHR submission files to be validated into it
  * Set the "csv_dir" parameter in `settings.py` to the full path of the folder created above
+ * Ensure the resources folder is also downloaded and is located in the same place as `omop_file_validator.py`
  * Execute the following at the command line:
  
         python omop_file_validator.py
