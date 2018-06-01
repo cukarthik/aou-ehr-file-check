@@ -1,4 +1,5 @@
 import glob
+import traceback
 
 import settings
 import os
@@ -195,7 +196,7 @@ def process_file(file_path):
                         result['errors'].append(dict(message='Missing required column', column_name=meta_column_name))
 
         except Exception as e:
-            print(e)
+            print(traceback.format_exc())
             #Adding error message if there is a wrong number of columns in a row
             result['errors'].append(dict(message=e.args[0].rstrip()))
 
