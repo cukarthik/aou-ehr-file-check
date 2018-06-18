@@ -1,6 +1,6 @@
 # AoU EHR Submission Validator
 
-Validate submissions for the All of Us data sprints
+Validate submissions for the All of Us EHR data 
 
 ## Requirements
 
