@@ -1,46 +1,41 @@
-import settings
+import _settings
 import unittest
 import omop_file_validator
 import os
+import difflib
 
 
 class TestReporter(unittest.TestCase):
-    def example_path(self, filename):
-        return os.path.join(settings.example_path, filename)
+    def assert_line_equality(self, first, second, msg=None):
+        self.assertTrue(isinstance(first, str), 'First line is not a string')
+        self.assertTrue(isinstance(second, str), 'Second line is not a string')
+        if first != second:
+            message = ''.join(difflib.ndiff(first.splitlines(True), second.splitlines(True)))
+            if msg:
+                message += " : " + msg
+            self.fail("Lines are not the same:\n" + message)
 
-    def check_error(self, r, message, actual, expected=None):
-        self.assertFalse(r['passed'])
-        self.assertTrue(len(r['errors']) == 1)
-        e = r['errors'][0]
-        self.assertEqual(e['message'], message)
-        self.assertEqual(e['actual'], actual)
-        if expected is not None:
-            self.assertEqual(e['expected'], expected)
+    def assert_file_equality(self, f1, f2, msg=""):
+        line_list1 = f1.readlines()
+        line_list2 = f2.readlines()
+        if len(line_list1) != len(line_list2):
+            self.fail("Files are unequal:\n" + msg)
+        else:
+            for i in range(len(line_list1)):
+                self.assert_line_equality(line_list1[i], line_list2[i])
 
-    def test_get_cdm_metadata(self):
-        cdm_metadata = omop_file_validator.get_cdm_table_columns()
-        self.assertTrue(cdm_metadata.count_rows() > 0)
+    def test_against_file(self):
+        submission_folder = _settings.example_path
+        omop_file_validator.evaluate_submission(submission_folder)
 
-    def test_invalid_table_name(self):
-        filename = 'cuwmhh_perzon_DataSprint_0.csv'
-        submission_filename = self.example_path(filename)
-        r = omop_file_validator.evaluate_submission(submission_filename)
-        self.check_error(r,
-                         message=omop_file_validator.MSG_CANNOT_PARSE_FILENAME,
-                         actual=filename,
-                         expected=omop_file_validator.FILENAME_FORMAT)
+        output_folder = os.path.join(_settings.example_path, 'errors')
+        results_file = os.path.join(output_folder, 'results.csv')
 
-    def test_invalid_hpo_id(self):
-        submission_filename = self.example_path('zzzzz_person_DataSprint_0.csv')
-        r = omop_file_validator.evaluate_submission(submission_filename)
-        self.check_error(r,
-                         message=omop_file_validator.MSG_INVALID_HPO_ID,
-                         actual='zzzzz')
+        expected_results_file = os.path.join(submission_folder, 'expected_errors', 'results.csv')
 
-    def test_invalid_sprint_num(self):
-        submission_filename = self.example_path('cuwmhh_person_DataSprint_1000.csv')
-        r = omop_file_validator.evaluate_submission(submission_filename)
-        self.check_error(r,
-                         message=omop_file_validator.MSG_INVALID_SPRINT_NUM,
-                         actual=1000,
-                         expected=settings.sprint_num)
+        with open(results_file, 'r') as f1, open(expected_results_file) as f2:
+            self.assert_file_equality(f1, f2)
+
+
+if __name__ == '__main__':
+    unittest.main()
