@@ -1,19 +1,21 @@
 import glob
 import traceback
 
-import settings
+import _settings
 import os
 import codecs
 import pandas as pd
 import csv
 import json
 import datetime
+import collections
 
 RESULT_SUCCESS = 'success'
 MSG_CANNOT_PARSE_FILENAME = 'Cannot parse filename'
 MSG_INVALID_TYPE = 'Type mismatch'
 MSG_INCORRECT_HEADER = 'Column not in table definition'
 MSG_MISSING_HEADER = 'Column missing in file'
+MSG_INCORRECT_ORDER = 'Column not in expected order'
 
 HEADER_KEYS = ['filename', 'table_name']
 ERROR_KEYS = ['message', 'column_name', 'actual', 'expected']
@@ -21,9 +23,10 @@ ERROR_KEYS = ['message', 'column_name', 'actual', 'expected']
 
 def get_cdm_table_columns(table_name):
     # allow files to be found regardless of CaSe
-    file=os.path.join(settings.cdm_metadata_path, table_name.lower()+'.json')
+    file=os.path.join(_settings.cdm_metadata_path, table_name.lower() + '.json')
     if os.path.isfile(file):
-        return json.load(open(file))
+        with open(file, 'r') as f:
+            return json.load(f, object_pairs_hook=collections.OrderedDict)
     else:
         return None
 
@@ -70,27 +73,31 @@ def cast_type(cdm_column_type, value):
 
 
 # code from: http://stackoverflow.com/questions/2456380/utf-8-html-and-css-files-with-bom-and-how-to-remove-the-bom-with-python
-def remove_bom(filename):
-    if os.path.isfile(filename):
-        f = open(filename, 'rb')
+def get_bom_length(f):
 
-        # read first 4 bytes
-        header = f.read(4)
+    # read first 4 bytes
+    header = f.read(4)
 
-        # check for BOM
-        bom_len = 0
-        encodings = [(codecs.BOM_UTF32, 4),
-                     (codecs.BOM_UTF16, 2),
-                     (codecs.BOM_UTF8, 3)]
+    # check for BOM
+    bom_len = 0
+    encodings = [(codecs.BOM_UTF32, 4),
+                 (codecs.BOM_UTF16, 2),
+                 (codecs.BOM_UTF8, 3)]
 
-        # remove appropriate number of bytes
-        for h, l in encodings:
-            if header.startswith(h):
-                bom_len = l
-                break
-        f.seek(0)
-        f.read(bom_len)
-        return f
+    # remove appropriate number of bytes
+    for h, l in encodings:
+        if header.startswith(h):
+            bom_len = l
+            break
+
+    return bom_len
+
+
+def remove_bom(f):
+    bom_len = get_bom_length(f)
+    f.seek(0)
+    f.read(bom_len)
+    return f
 
 
 #finds the first occurrence of an error for that column.
@@ -146,54 +153,58 @@ def process_file(file_path):
 
             # get column names for this table
             cdm_column_names = [col['name'] for col in cdm_table_columns]
-            csv_columns = list(pd.read_csv(remove_bom(file_path), nrows=1).columns.values)
-            datetime_columns = [col_name.lower() for col_name in csv_columns if 'date' in col_name.lower()]
 
-            #check columns if looks good process file
-            if (_check_columns(cdm_column_names, csv_columns, result)):
+            if os.path.isfile(file_path):
+                f = open(file_path, 'rb')
+                csv_columns = list(pd.read_csv(remove_bom(f), nrows=1).columns.values)
+                datetime_columns = [col_name.lower() for col_name in csv_columns if 'date' in col_name.lower()]
 
-                # read file to be processed
-                df = pd.read_csv(remove_bom(file_path), na_values=['', ' ', '.'], parse_dates=datetime_columns,
-                                 infer_datetime_format=True)
-                print(phase)
+                #check columns if looks good process file
+                if (_check_columns(cdm_column_names, csv_columns, result)):
 
-                # lowercase field names
-                df = df.rename(columns=str.lower)
+                    # read file to be processed
+                    df = pd.read_csv(remove_bom(f), na_values=['', ' ', '.'], parse_dates=datetime_columns,
+                                     infer_datetime_format=True)
+                    print(phase)
 
-                # Check each column exists with correct type and required
-                for meta_item in cdm_table_columns:
-                    meta_column_name = meta_item['name']
-                    meta_column_required =  meta_item['mode']=='required'
-                    meta_column_type = meta_item['type']
-                    submission_has_column = False
+                    # lowercase field names
+                    df = df.rename(columns=str.lower)
 
-                    for submission_column in df.columns:
-                        if submission_column == meta_column_name:
-                            submission_has_column = True
-                            submission_column_type = df[submission_column].dtype
+                    # Check each column exists with correct type and required
+                    for meta_item in cdm_table_columns:
+                        meta_column_name = meta_item['name']
+                        meta_column_required = meta_item['mode']=='required'
+                        meta_column_type = meta_item['type']
+                        submission_has_column = False
 
-                            # If all empty don't do type check
-                            if submission_column_type != None:
-                                if not type_eq(meta_column_type, submission_column_type):
+                        for submission_column in df.columns:
+                            if submission_column == meta_column_name:
+                                submission_has_column = True
+                                submission_column_type = df[submission_column].dtype
 
-                                    #find the row that has the issue
-                                    error_row_index = find_error_in_file(submission_column, meta_column_type, submission_column_type, df)
-                                    if error_row_index :
-                                        e = dict(message=MSG_INVALID_TYPE+" line number "+str(error_row_index+1),
-                                             column_name=submission_column,
-                                             actual=df[submission_column][error_row_index],
-                                             expected=meta_column_type)
-                                        result['errors'].append(e)
+                                # If all empty don't do type check
+                                if submission_column_type != None:
+                                    if not type_eq(meta_column_type, submission_column_type):
 
-                            # Check if any nulls present in a required field
-                            if meta_column_required and df[submission_column].isnull().sum()>0:#submission_column['stats']['nulls']:
-                                result['errors'].append(dict(message='NULL values are not allowed for column',
-                                                             column_name=submission_column))
-                            continue
+                                        #find the row that has the issue
+                                        error_row_index = find_error_in_file(submission_column, meta_column_type, submission_column_type, df)
+                                        if error_row_index :
+                                            e = dict(message=MSG_INVALID_TYPE+" line number "+str(error_row_index+1),
+                                                 column_name=submission_column,
+                                                 actual=df[submission_column][error_row_index],
+                                                 expected=meta_column_type)
+                                            result['errors'].append(e)
 
-                    #Check if the column is required
-                    if not submission_has_column and meta_column_required:
-                        result['errors'].append(dict(message='Missing required column', column_name=meta_column_name))
+                                # Check if any nulls present in a required field
+                                if meta_column_required and df[submission_column].isnull().sum()>0:#submission_column['stats']['nulls']:
+                                    result['errors'].append(dict(message='NULL values are not allowed for column',
+                                                                 column_name=submission_column))
+                                continue
+
+                        #Check if the column is required
+                        if not submission_has_column and meta_column_required:
+                            result['errors'].append(dict(message='Missing required column', column_name=meta_column_name))
+                f.close()
 
         except Exception as e:
             print(traceback.format_exc())
@@ -231,8 +242,17 @@ def _check_columns(cdm_column_names, csv_columns, result):
             result['errors'].append(e)
             columns_valid = False
 
-    return columns_valid
+    # check order of cdm table headers against headers in file
+    for idx, col in enumerate(cdm_column_names):
+        if idx < len(csv_columns) and csv_columns[idx] != col:
+            e = dict(message=MSG_INCORRECT_ORDER,
+                     actual=csv_columns[idx],
+                     expected=col)
+            result['errors'].append(e)
+            columns_valid = False
+            break
 
+    return columns_valid
 
 def evaluate_submission(d):
     out_dir = os.path.join(d, 'errors')
@@ -241,7 +261,7 @@ def evaluate_submission(d):
 
     output_filename = os.path.join(out_dir, 'results.csv')
     with open(output_filename, 'w') as out:
-        #Create header information for results file
+        # Create header information for results file
         field_names = HEADER_KEYS + ERROR_KEYS
         writer = csv.DictWriter(out, fieldnames=field_names, lineterminator='\n', quoting=csv.QUOTE_ALL)
         writer.writeheader()
@@ -265,4 +285,4 @@ def evaluate_submission(d):
 
 
 if __name__ == '__main__':
-    evaluate_submission(settings.csv_dir)
+    evaluate_submission(_settings.csv_dir)
