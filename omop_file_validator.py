@@ -1,5 +1,3 @@
-from builtins import type
-
 import glob
 import traceback
 
