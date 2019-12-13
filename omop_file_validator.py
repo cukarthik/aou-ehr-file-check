@@ -54,10 +54,12 @@ def type_eq(cdm_column_type, submission_column_type):
     if cdm_column_type == 'date':
         return submission_column_type in ['str', 'unicode', 'datetime64[ns]']
     if cdm_column_type == 'timestamp':
-            return submission_column_type in ['str', 'unicode', 'datetime64[ns]']
-    if cdm_column_type == 'numeric':
+        return submission_column_type in ['str', 'unicode', 'datetime64[ns]']
+    if cdm_column_type in ['numeric', 'float']:
         return submission_column_type == 'float'
-    raise Exception('Unsupported CDM column type ' + cdm_column_type)
+    else:
+        print(submission_column_type)
+        raise Exception('Unsupported CDM column type ' + cdm_column_type)
 
 
 def cast_type(cdm_column_type, value):
@@ -67,16 +69,18 @@ def cast_type(cdm_column_type, value):
     :param value:
     :return:
     """
-    if cdm_column_type == 'integer':
+    if cdm_column_type in ('integer', 'int64'):
         return int(value)
     if cdm_column_type in ('character varying', 'text', 'string'):
         return str(value)
     if cdm_column_type == 'numeric':
         return float(value)
-    if cdm_column_type == 'date':
+    if cdm_column_type == 'float' and isinstance(value, float):
+        return value
+    if cdm_column_type == 'date' and isinstance(value, datetime.date):
         return datetime.date(value)
-    if cdm_column_type == 'timestamp':
-        return datetime.datetime(value)
+    if cdm_column_type == 'timestamp' and isinstance(value, datetime.datetime):  # do not do datetime.datetime
+        return value
 
 
 # code from: http://stackoverflow.com/questions/2456380/utf-8-html-and-css-files-with-bom-and-how-to-remove-the-bom-with-python
