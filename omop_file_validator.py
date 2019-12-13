@@ -1,3 +1,5 @@
+from builtins import type
+
 import glob
 import traceback
 
@@ -120,8 +122,6 @@ def find_error_in_file(column_name, cdm_column_type, submission_column_type, df)
 
         try:
             if i <= len(df) - 1:
-                #print(index)
-                #print(row[column_name])
                 if row[column_name]:
                     cast_type(cdm_column_type, row[column_name])
                 else:
@@ -199,7 +199,6 @@ def process_file(file_path):
                                 # If all empty don't do type check
                                 if submission_column_type != None:
                                     if not type_eq(meta_column_type, submission_column_type):
-
                                         #find the row that has the issue
                                         error_row_index = find_error_in_file(submission_column, meta_column_type, submission_column_type, df)
                                         if error_row_index :
