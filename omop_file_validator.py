@@ -78,7 +78,7 @@ def cast_type(cdm_column_type, value):
     if cdm_column_type == 'float' and isinstance(value, float):
         return value
     if cdm_column_type == 'date' and isinstance(value, datetime.date):
-        return datetime.date(value)
+        return value
     if cdm_column_type == 'timestamp' and isinstance(value, datetime.datetime):  # do not do datetime.datetime
         return value
 
