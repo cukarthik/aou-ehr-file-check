@@ -54,10 +54,12 @@ def type_eq(cdm_column_type, submission_column_type):
     if cdm_column_type == 'date':
         return submission_column_type in ['str', 'unicode', 'datetime64[ns]']
     if cdm_column_type == 'timestamp':
-            return submission_column_type in ['str', 'unicode', 'datetime64[ns]']
-    if cdm_column_type == 'numeric':
+        return submission_column_type in ['str', 'unicode', 'datetime64[ns]']
+    if cdm_column_type in ['numeric', 'float']:
         return submission_column_type == 'float'
-    raise Exception('Unsupported CDM column type ' + cdm_column_type)
+    else:
+        print(submission_column_type)
+        raise Exception('Unsupported CDM column type ' + cdm_column_type)
 
 
 def cast_type(cdm_column_type, value):
@@ -67,16 +69,18 @@ def cast_type(cdm_column_type, value):
     :param value:
     :return:
     """
-    if cdm_column_type == 'integer':
+    if cdm_column_type in ('integer', 'int64'):
         return int(value)
     if cdm_column_type in ('character varying', 'text', 'string'):
         return str(value)
     if cdm_column_type == 'numeric':
         return float(value)
-    if cdm_column_type == 'date':
-        return datetime.date(value)
-    if cdm_column_type == 'timestamp':
-        return datetime.datetime(value)
+    if cdm_column_type == 'float' and isinstance(value, float):
+        return value
+    if cdm_column_type == 'date' and isinstance(value, datetime.date):
+        return value
+    if cdm_column_type == 'timestamp' and isinstance(value, datetime.datetime):  # do not do datetime.datetime
+        return value
 
 
 # code from: http://stackoverflow.com/questions/2456380/utf-8-html-and-css-files-with-bom-and-how-to-remove-the-bom-with-python
@@ -116,8 +120,6 @@ def find_error_in_file(column_name, cdm_column_type, submission_column_type, df)
 
         try:
             if i <= len(df) - 1:
-                #print(index)
-                #print(row[column_name])
                 if row[column_name]:
                     cast_type(cdm_column_type, row[column_name])
                 else:
@@ -195,7 +197,6 @@ def process_file(file_path):
                                 # If all empty don't do type check
                                 if submission_column_type != None:
                                     if not type_eq(meta_column_type, submission_column_type):
-
                                         #find the row that has the issue
                                         error_row_index = find_error_in_file(submission_column, meta_column_type, submission_column_type, df)
                                         if error_row_index :
