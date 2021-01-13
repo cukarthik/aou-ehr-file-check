@@ -160,6 +160,22 @@ def find_error_in_file(column_name, cdm_column_type, submission_column_type,
             return index
 
 
+def find_blank_lines(f):
+    """Check for rows in a csv file with only empty values
+
+    :param f: A file object
+    :type f: file-like object
+    :return: List of rows with all empty values
+    :rtype: list
+    """
+    df = pd.read_csv(f)
+    indices = df.index[df.apply(
+        lambda row: all(row.apply(lambda col: pd.isnull(col))),
+        axis=1)].tolist()
+
+    return [i + 1 for i in indices]
+
+
 def check_csv_format(f, column_names):
     results = []
     idx = 1
@@ -253,6 +269,18 @@ def run_checks(file_path, f):
             col_name.lower() for col_name in csv_columns
             if 'date' in col_name.lower()
         ]
+        f.seek(0)
+
+        blank_lines = find_blank_lines(f)
+        if blank_lines:
+            blank_lines_str = ",".join(map(str, blank_lines))
+            line_str = 'lines' if len(blank_lines) > 1 else 'line'
+            blank_lines_msg = f'File contains blank {line_str} on {line_str} {blank_lines_str}. ' \
+                              'If there is no data, please only submit the header line.'
+
+            result['errors'].append(dict(message=blank_lines_msg))
+            return result
+
         f.seek(0)
 
         # check columns if looks good process file
